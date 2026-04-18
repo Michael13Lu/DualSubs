@@ -31,10 +31,12 @@ class DualSubsController {
         return;
       }
 
+      console.debug('[DualSubs] Translating:', text);
       const translated = await this.translationSvc.translate(
         text,
         this.settings
       );
+      console.debug('[DualSubs] Result:', translated);
       if (translated) {
         this.uiSvc.show(text, translated, this.settings);
       }
