@@ -1,5 +1,9 @@
 import { PlatformAdapter, SubtitleCallback } from './baseAdapter';
 
+// Udemy renders the subtitle text OUTSIDE the <video> element,
+// in a sibling component below the player controls.
+// We observe the parent of the video viewer to catch it.
+
 export class UdemyAdapter implements PlatformAdapter {
   readonly name = 'Udemy';
 
@@ -10,7 +14,6 @@ export class UdemyAdapter implements PlatformAdapter {
   private retryCount = 0;
   private tracksAttached = false;
   private domAttached = false;
-  private observedContainer: Element | null = null;
 
   matches(): boolean {
     return window.location.hostname === 'www.udemy.com';
@@ -30,7 +33,6 @@ export class UdemyAdapter implements PlatformAdapter {
     this.retryCount = 0;
     this.tracksAttached = false;
     this.domAttached = false;
-    this.observedContainer = null;
   }
 
   private tryAttach(): void {
@@ -65,7 +67,6 @@ export class UdemyAdapter implements PlatformAdapter {
       console.log(`[DualSubs] Udemy TextTrack attached (${tracks.length} track(s))`);
       return true;
     }
-
     console.log('[DualSubs] Udemy <video> found, no TextTracks yet');
     return false;
   }
@@ -93,87 +94,86 @@ export class UdemyAdapter implements PlatformAdapter {
     const container = this.findContainer();
     if (!container) return false;
 
-    this.observedContainer = container;
-    const observer = new MutationObserver((muts) => this.onDOMMutation(muts));
+    const observer = new MutationObserver(() => this.onDOMMutation());
     observer.observe(container, { childList: true, subtree: true, characterData: true });
     this.cleanups.push(() => observer.disconnect());
 
-    // Log found container class for debugging
+    const tag = container.tagName;
     const cls = (container as HTMLElement).className?.toString().slice(0, 80) ?? '';
-    console.log(`[DualSubs] Udemy DOM observer on: ${container.tagName} ${cls}`);
+    console.log(`[DualSubs] Udemy DOM observer on: ${tag} "${cls}"`);
     return true;
   }
 
   private findContainer(): Element | null {
-    const candidates = [
-      // Stable data-purpose attributes
-      '[data-purpose="captions-display"]',
+    // The subtitle is OUTSIDE the video player — observe the player's parent
+    const playerSelectors = [
+      '[class*="video-viewer--container"]',
       '[data-purpose="video-component"]',
       '[data-purpose="video-player"]',
-      // video.js
-      '.vjs-text-track-display',
-      // Hashed class fragments (Udemy's pattern: ComponentName--elementName--hash)
-      '[class*="video-viewer--container"]',
-      '[class*="captions-display"]',
-      '[class*="caption-display"]',
-      '[class*="video-viewer"]',
-      '[class*="lecture-view"]',
+      '.vjs-tech',
     ];
 
-    for (const sel of candidates) {
+    for (const sel of playerSelectors) {
       const el = document.querySelector(sel);
-      if (el) return el;
+      if (el?.parentElement) {
+        console.log(`[DualSubs] Using parent of "${sel}" as watch container`);
+        return el.parentElement;
+      }
     }
 
-    // Last resort: parent of the <video> element, two levels up
+    // Fallback: two levels above <video>
     const video = document.querySelector('video');
-    return video?.parentElement?.parentElement ?? video?.parentElement ?? null;
+    return video?.parentElement?.parentElement
+      ?? video?.parentElement
+      ?? null;
   }
 
-  private onDOMMutation(mutations: MutationRecord[]): void {
-    // 1. Try known selectors first
-    const known = [
+  private onDOMMutation(): void {
+    // 1. Check known stable selectors first
+    const knownSelectors = [
       '[data-purpose="captions-cue-text"]',
       '[data-purpose="transcript-cue"]',
       '[class*="captions-cue-text"]',
-      '[class*="caption-cue-text"]',
+      '[class*="caption-cue"]',
       '[class*="video-viewer--captions"]',
-      '[class*="captions-container"]',
       '.vjs-text-track-cue span',
       '.vjs-text-track-cue',
     ];
 
-    for (const sel of known) {
+    for (const sel of knownSelectors) {
       const el = document.querySelector(sel);
       const text = el?.textContent?.trim();
-      if (text) { this.emit(text); return; }
+      if (text) {
+        this.emit(text);
+        return;
+      }
     }
 
-    // 2. Fallback: scan added/changed nodes for subtitle-length text
-    //    (subtitles are sentences, not short time codes or numbers)
-    for (const mut of mutations) {
-      for (const node of Array.from(mut.addedNodes)) {
-        const text = node.textContent?.replace(/\s+/g, ' ').trim() ?? '';
-        if (this.looksLikeSubtitle(text)) {
-          this.emit(text);
-          return;
-        }
-      }
-      if (mut.type === 'characterData') {
-        const text = mut.target.textContent?.trim() ?? '';
-        if (this.looksLikeSubtitle(text)) {
-          this.emit(text);
-          return;
-        }
+    // 2. Scan all elements near the bottom of the player area
+    //    that contain sentence-length text (not progress % or time codes)
+    const allEls = document.querySelectorAll(
+      '[class*="video-viewer"] p, [class*="video-viewer"] span, ' +
+      '[class*="captions"] p, [class*="captions"] span, ' +
+      '[class*="caption"] p, [class*="caption"] span'
+    );
+
+    for (const el of Array.from(allEls)) {
+      const text = el.textContent?.trim() ?? '';
+      if (this.looksLikeSubtitle(text)) {
+        this.emit(text);
+        return;
       }
     }
   }
 
-  /** Subtitle text is typically 10–300 chars of words, not numbers/symbols */
+  /** Subtitle text: 10-400 chars, >65% word characters, no progress-bar patterns */
   private looksLikeSubtitle(text: string): boolean {
-    if (text.length < 8 || text.length > 400) return false;
-    const wordChars = text.replace(/[^a-zA-ZА-Яа-яёÀ-ÿ\s]/g, '').length;
-    return wordChars / text.length > 0.6;
+    if (text.length < 10 || text.length > 400) return false;
+    if (/^Progress bar/i.test(text)) return false;
+    if (/^\d{1,2}:\d{2}/.test(text)) return false;          // time codes
+    if (text.replace(/\d|[%.:,\s]/g, '').length < 3) return false; // mostly numbers
+    const letters = (text.match(/[a-zA-ZА-Яа-яёÀ-ÿ]/g) ?? []).length;
+    return letters / text.length > 0.60;
   }
 
   private emit(text: string): void {

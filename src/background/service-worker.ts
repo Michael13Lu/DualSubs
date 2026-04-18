@@ -48,7 +48,9 @@ async function translate(req: TranslationRequest): Promise<string> {
 }
 
 async function translateMyMemory(req: TranslationRequest): Promise<string> {
-  const langPair = `${req.sourceLang}|${req.targetLang}`;
+  // MyMemory rejects 'auto' — use 'en' as default source language
+  const source = !req.sourceLang || req.sourceLang === 'auto' ? 'en' : req.sourceLang;
+  const langPair = `${source}|${req.targetLang}`;
   const url =
     `https://api.mymemory.translated.net/get` +
     `?q=${encodeURIComponent(req.text)}&langpair=${langPair}`;
