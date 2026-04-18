@@ -1,11 +1,14 @@
-# DualSubs
+<div align="center">
+  <img src="icons/icon128.png" width="96" height="96" alt="DualSubs icon" />
+  <h1>DualSubs</h1>
+  <p><strong>Real-time dual subtitles for YouTube and Udemy</strong><br/>
+  Original language on top · Your translation below · Zero friction</p>
 
-> Real-time dual subtitles for YouTube and Udemy — original language on top, your translation below.
-
-![Chrome Extension](https://img.shields.io/badge/Chrome-Extension-4285F4?logo=googlechrome&logoColor=white)
-![Manifest V3](https://img.shields.io/badge/Manifest-V3-green)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)
-![License](https://img.shields.io/badge/license-MIT-blue)
+  ![Chrome Extension](https://img.shields.io/badge/Chrome-Extension-4285F4?logo=googlechrome&logoColor=white)
+  ![Manifest V3](https://img.shields.io/badge/Manifest-V3-green)
+  ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)
+  ![License](https://img.shields.io/badge/license-MIT-blue)
+</div>
 
 ---
 
