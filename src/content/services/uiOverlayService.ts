@@ -105,6 +105,8 @@ export class UIOverlayService {
       zIndex:         '9999',
       pointerEvents:  'none',
     });
+
+    this.applyLineStyles(settings); // ← was missing, caused invisible text
   }
 
   /** Walk up from the video-viewer to find the section that also holds the subtitle */

@@ -166,12 +166,14 @@ export class UdemyAdapter implements PlatformAdapter {
     }
   }
 
-  /** Subtitle text: 10-400 chars, >65% word characters, no progress-bar patterns */
+  /** Subtitle text: 10-400 chars, >65% word characters, no UI noise patterns */
   private looksLikeSubtitle(text: string): boolean {
     if (text.length < 10 || text.length > 400) return false;
     if (/^Progress bar/i.test(text)) return false;
     if (/^\d{1,2}:\d{2}/.test(text)) return false;          // time codes
-    if (text.replace(/\d|[%.:,\s]/g, '').length < 3) return false; // mostly numbers
+    if (/\[Auto\]/i.test(text)) return false;               // "English [Auto], Dutch [Auto]"
+    if (/^\s*[\w\s]+\[.*?\](,\s*[\w\s]+\[.*?\])*\s*$/.test(text)) return false; // language labels
+    if (text.replace(/\d|[%.:,\s]/g, '').length < 3) return false;
     const letters = (text.match(/[a-zA-ZА-Яа-яёÀ-ÿ]/g) ?? []).length;
     return letters / text.length > 0.60;
   }
