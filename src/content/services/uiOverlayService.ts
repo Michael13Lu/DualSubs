@@ -7,6 +7,7 @@ export class UIOverlayService {
   private originalEl: HTMLDivElement | null = null;
   private translatedEl: HTMLDivElement | null = null;
   private playerEl: HTMLElement | null = null;
+  private positionCleanup: (() => void) | null = null;
 
   private get isUdemy(): boolean {
     return window.location.hostname.includes('udemy.com');
@@ -19,7 +20,7 @@ export class UIOverlayService {
     this.container.style.display = 'flex';
 
     if (this.originalEl) {
-      // On Udemy the platform already renders the original — don't duplicate it
+      // Udemy already shows the original — don't duplicate
       const showOrig = settings.showOriginal && !this.isUdemy;
       this.originalEl.textContent = originalText;
       this.originalEl.style.display = showOrig ? '' : 'none';
@@ -27,6 +28,9 @@ export class UIOverlayService {
     if (this.translatedEl) {
       this.translatedEl.textContent = translatedText;
     }
+
+    // Keep overlay under the player on Udemy as the page re-renders
+    if (this.isUdemy) this.refreshUdemyPosition();
   }
 
   clear(): void {
@@ -37,6 +41,8 @@ export class UIOverlayService {
   }
 
   destroy(): void {
+    this.positionCleanup?.();
+    this.positionCleanup = null;
     this.container?.remove();
     this.container = null;
     this.originalEl = null;
@@ -50,11 +56,12 @@ export class UIOverlayService {
 
   applySettings(settings: Settings): void {
     if (!this.container) return;
-    this.applyPositionStyles(settings);
+    if (!this.isUdemy) this.applyPositionStyles(settings);
     this.applyLineStyles(settings);
+    this.container.style.gap = `${settings.spacing}px`;
   }
 
-  // ── Private ───────────────────────────────────────────────────────────────
+  // ── Container bootstrap ───────────────────────────────────────────────────
 
   private ensureContainer(settings: Settings): void {
     if (this.container) return;
@@ -74,68 +81,70 @@ export class UIOverlayService {
     if (this.isUdemy) {
       this.mountUdemy(settings);
     } else {
-      this.mountOverlay(settings);
+      this.mountInPlayer(settings);
     }
   }
 
-  // ── Udemy: block element below the subtitle area ──────────────────────────
+  // ── Udemy: fixed overlay positioned just below the player ─────────────────
 
   private mountUdemy(settings: Settings): void {
-    // Find the container that holds the player + Udemy's own subtitle
-    // and append our translation as a plain block after all of it.
-    const parent = this.findUdemySubtitleParent();
+    document.body.appendChild(this.container!);
 
-    if (parent) {
-      parent.appendChild(this.container!);
-      this.playerEl = parent;
-    } else {
-      document.body.appendChild(this.container!);
-    }
-
-    // Style as a full-width block row in the normal document flow
     Object.assign(this.container!.style, {
-      display:        'flex',
-      flexDirection:  'column',
-      alignItems:     'center',
-      justifyContent: 'center',
-      width:          '100%',
-      padding:        '6px 16px 8px',
-      boxSizing:      'border-box',
-      gap:            `${settings.spacing}px`,
-      zIndex:         '9999',
-      pointerEvents:  'none',
+      position:      'fixed',
+      left:          '50%',
+      transform:     'translateX(-50%)',
+      zIndex:        '2147483647',
+      pointerEvents: 'none',
+      display:       'flex',
+      flexDirection: 'column',
+      alignItems:    'center',
+      gap:           `${settings.spacing}px`,
+      maxWidth:      '80%',
+      textAlign:     'center',
     });
 
-    this.applyLineStyles(settings); // ← was missing, caused invisible text
+    this.applyLineStyles(settings);
+    this.refreshUdemyPosition();
+
+    // Track scroll and resize so the overlay stays in sync
+    const onScrollResize = () => this.refreshUdemyPosition();
+    window.addEventListener('scroll',  onScrollResize, { passive: true });
+    window.addEventListener('resize',  onScrollResize, { passive: true });
+    this.positionCleanup = () => {
+      window.removeEventListener('scroll', onScrollResize);
+      window.removeEventListener('resize', onScrollResize);
+    };
   }
 
-  /** Walk up from the video-viewer to find the section that also holds the subtitle */
-  private findUdemySubtitleParent(): HTMLElement | null {
-    const playerSelectors = [
-      '[class*="video-viewer--container"]',
-      '[data-purpose="video-component"]',
-      '[data-purpose="video-player"]',
-    ];
+  /**
+   * Position the overlay right below the Udemy subtitle line.
+   * We measure the video element's on-screen bottom edge, then add:
+   *   ~50px  for the player control bar
+   *   ~32px  for Udemy's own subtitle row
+   */
+  private refreshUdemyPosition(): void {
+    if (!this.container) return;
 
-    for (const sel of playerSelectors) {
-      const el = document.querySelector<HTMLElement>(sel);
-      if (el?.parentElement) return el.parentElement;
-    }
-
-    // Fallback: two levels above <video>
     const video = document.querySelector('video');
-    return video?.parentElement?.parentElement ?? video?.parentElement ?? null;
+    if (!video) return;
+
+    const rect = video.getBoundingClientRect();
+    const top = rect.bottom + 50 + 34; // controls ≈ 50px, subtitle row ≈ 34px
+
+    this.container.style.top    = `${top}px`;
+    this.container.style.bottom = 'auto';
   }
 
-  // ── YouTube / generic: absolute overlay inside the player ────────────────
+  // ── YouTube / generic: absolute inside the player ─────────────────────────
 
-  private mountOverlay(settings: Settings): void {
+  private mountInPlayer(settings: Settings): void {
     const player = this.findPlayerContainer();
 
     if (player) {
-      const computed = window.getComputedStyle(player);
-      if (computed.position === 'static') {
-        player.dataset['dualsubsPos'] = computed.position;
+      const pos = window.getComputedStyle(player).position;
+      if (pos === 'static') {
+        player.dataset['dualsubsPos'] = pos;
         player.style.position = 'relative';
       }
       player.appendChild(this.container!);
@@ -168,30 +177,28 @@ export class UIOverlayService {
   private applyPositionStyles(settings: Settings): void {
     if (!this.container || this.isUdemy) return;
     const { position, spacing } = settings;
-
     Object.assign(this.container.style, {
-      position:       this.playerEl ? 'absolute' : 'fixed',
-      left:           '50%',
-      transform:      'translateX(-50%)',
-      zIndex:         '2147483647',
-      pointerEvents:  'none',
-      textAlign:      'center',
-      maxWidth:       '90%',
-      width:          'max-content',
-      display:        'flex',
-      flexDirection:  'column',
-      alignItems:     'center',
-      gap:            `${spacing}px`,
-      top:            position === 'top'    ? '6%'  : 'auto',
-      bottom:         position === 'bottom' ? '12%' : 'auto',
+      position:      this.playerEl ? 'absolute' : 'fixed',
+      left:          '50%',
+      transform:     'translateX(-50%)',
+      zIndex:        '2147483647',
+      pointerEvents: 'none',
+      textAlign:     'center',
+      maxWidth:      '90%',
+      width:         'max-content',
+      display:       'flex',
+      flexDirection: 'column',
+      alignItems:    'center',
+      gap:           `${spacing}px`,
+      top:           position === 'top'    ? '6%'  : 'auto',
+      bottom:        position === 'bottom' ? '12%' : 'auto',
     });
   }
 
   private applyLineStyles(settings: Settings): void {
     const { fontSize, fontColor, bgColor, bgOpacity } = settings;
     const bg = hexToRgba(bgColor, bgOpacity);
-
-    const base: Partial<CSSStyleDeclaration> = {
+    const style: Partial<CSSStyleDeclaration> = {
       fontSize:     `${fontSize}px`,
       color:        fontColor,
       background:   bg,
@@ -203,9 +210,8 @@ export class UIOverlayService {
       maxWidth:     '100%',
       whiteSpace:   'pre-wrap',
     };
-
-    if (this.originalEl)   Object.assign(this.originalEl.style,   base);
-    if (this.translatedEl) Object.assign(this.translatedEl.style, base);
+    if (this.originalEl)   Object.assign(this.originalEl.style,   style);
+    if (this.translatedEl) Object.assign(this.translatedEl.style, style);
   }
 }
 
