@@ -1,6 +1,17 @@
 import { Settings } from '../../types';
 
 const OVERLAY_ID = 'dualsubs-overlay';
+const HIDE_STYLE_ID = 'dualsubs-hide-native';
+
+// Selectors for Udemy's native subtitle elements — we hide them and
+// replace them with our own dual-line overlay.
+const UDEMY_CAPTION_SELECTORS = [
+  '[data-purpose="captions-cue-text"]',
+  '[class*="captions-cue-text"]',
+  '[class*="captions-display--captions-container"]',
+  '.vjs-text-track-display .vjs-text-track-cue',
+  '.vjs-text-track-display',
+].join(',');
 
 export class UIOverlayService {
   private container: HTMLDivElement | null = null;
@@ -20,7 +31,8 @@ export class UIOverlayService {
     this.container.style.display = 'flex';
 
     if (this.originalEl) {
-      const showOrig = settings.showOriginal && !this.isUdemy;
+      // On Udemy we always show the original — we've hidden Udemy's own subtitle
+      const showOrig = settings.showOriginal;
       this.originalEl.textContent = originalText;
       this.originalEl.style.display = showOrig ? '' : 'none';
     }
@@ -50,6 +62,8 @@ export class UIOverlayService {
       delete this.playerEl.dataset['dualsubsPos'];
     }
     this.playerEl = null;
+    // Restore Udemy's native subtitles
+    document.getElementById(HIDE_STYLE_ID)?.remove();
   }
 
   applySettings(settings: Settings): void {
@@ -77,13 +91,22 @@ export class UIOverlayService {
     this.container.appendChild(this.translatedEl);
 
     if (this.isUdemy) {
+      this.hideUdemyNativeSubtitles();
       this.mountUdemy(settings);
     } else {
       this.mountInPlayer(settings);
     }
   }
 
-  // ── Udemy: fixed overlay, moves into fullscreen element when needed ────────
+  // ── Udemy: hide native subs, show our overlay inside the video ────────────
+
+  private hideUdemyNativeSubtitles(): void {
+    if (document.getElementById(HIDE_STYLE_ID)) return;
+    const style = document.createElement('style');
+    style.id = HIDE_STYLE_ID;
+    style.textContent = `${UDEMY_CAPTION_SELECTORS} { visibility: hidden !important; }`;
+    document.head.appendChild(style);
+  }
 
   private mountUdemy(settings: Settings): void {
     this.applyUdemyBaseStyles(settings);
@@ -128,24 +151,19 @@ export class UIOverlayService {
     const fsEl = document.fullscreenElement as HTMLElement | null;
 
     if (fsEl) {
-      // Entering fullscreen — move overlay inside the fullscreen element
-      // so it appears in the top layer.
       const pos = window.getComputedStyle(fsEl).position;
       if (pos === 'static') fsEl.style.position = 'relative';
-
       fsEl.appendChild(this.container);
 
-      // In fullscreen, position absolutely at the bottom of the screen
       Object.assign(this.container.style, {
         position:  'fixed',
         left:      '50%',
         transform: 'translateX(-50%)',
-        bottom:    '80px', // above the subtitle line in fullscreen
+        bottom:    '12%', // above control bar in fullscreen
         top:       'auto',
       });
       this.applyLineStyles(settings);
     } else {
-      // Exiting fullscreen — move back to body
       document.body.appendChild(this.container);
       this.applyUdemyBaseStyles(settings);
       this.applyLineStyles(settings);
@@ -154,18 +172,20 @@ export class UIOverlayService {
   }
 
   /**
-   * Position the overlay right below the Udemy subtitle line (windowed mode).
-   * Measures video bottom + control bar (≈50px) + subtitle row (≈34px).
+   * Place our overlay where Udemy's subtitle row is — just above the control
+   * bar, inside the video frame.  video.bottom marks the bottom edge of the
+   * <video> element; Udemy's subtitle sits roughly 40 px above that edge.
    */
   private refreshUdemyPosition(): void {
     if (!this.container) return;
-    if (document.fullscreenElement) return; // managed by onFullscreenChange
+    if (document.fullscreenElement) return;
 
     const video = document.querySelector('video');
     if (!video) return;
 
     const rect = video.getBoundingClientRect();
-    const top = rect.bottom + 50 + 34;
+    // Sit inside the video frame ~50px above its bottom edge
+    const top = rect.bottom - 50;
 
     this.container.style.top    = `${top}px`;
     this.container.style.bottom = 'auto';
