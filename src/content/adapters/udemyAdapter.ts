@@ -173,6 +173,8 @@ export class UdemyAdapter implements PlatformAdapter {
     if (/^\d{1,2}:\d{2}/.test(text)) return false;          // time codes
     if (/\[Auto\]/i.test(text)) return false;               // "English [Auto], Dutch [Auto]"
     if (/^\s*[\w\s]+\[.*?\](,\s*[\w\s]+\[.*?\])*\s*$/.test(text)) return false; // language labels
+    if (/Loaded:\s*\d*%?/i.test(text)) return false;        // "Loaded: NaN%"
+    if (/^\s*\d+(\.\d+)?%\s*$/.test(text)) return false;   // bare percentage
     if (text.replace(/\d|[%.:,\s]/g, '').length < 3) return false;
     const letters = (text.match(/[a-zA-ZА-Яа-яёÀ-ÿ]/g) ?? []).length;
     return letters / text.length > 0.60;

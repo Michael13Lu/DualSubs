@@ -16,7 +16,7 @@ export class TranslationService {
     const existing = this.inFlight.get(key);
     if (existing) return existing;
 
-    const promise = this.request(trimmed, settings)
+    const promise = this.dispatch(trimmed, settings)
       .then((result) => {
         this.cache.set(trimmed, settings.targetLanguage, result);
         this.inFlight.delete(key);
@@ -32,7 +32,39 @@ export class TranslationService {
     return promise;
   }
 
-  private request(text: string, settings: Settings): Promise<string> {
+  // ── Routing ───────────────────────────────────────────────────────────────
+
+  private dispatch(text: string, settings: Settings): Promise<string> {
+    // MyMemory is a free public API — fetch directly from the content script
+    // to avoid MV3 service-worker lifecycle issues (worker sleeps mid-request).
+    if (settings.translationProvider === 'mymemory') {
+      return this.myMemoryDirect(text, settings.targetLanguage);
+    }
+    // Paid providers (Google / OpenAI) go through the background worker
+    // so API keys stay out of the page context.
+    return this.viaServiceWorker(text, settings);
+  }
+
+  // ── MyMemory: direct fetch from content script ────────────────────────────
+
+  private async myMemoryDirect(text: string, targetLang: string): Promise<string> {
+    const url =
+      `https://api.mymemory.translated.net/get` +
+      `?q=${encodeURIComponent(text)}&langpair=en|${targetLang}`;
+
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`MyMemory HTTP ${res.status}`);
+
+    const data = await res.json();
+    if (data.responseStatus !== 200) {
+      throw new Error(`MyMemory: ${data.responseDetails}`);
+    }
+    return data.responseData.translatedText as string;
+  }
+
+  // ── Google / OpenAI: via background service worker ────────────────────────
+
+  private viaServiceWorker(text: string, settings: Settings): Promise<string> {
     const payload = {
       text,
       sourceLang: 'en',
@@ -40,30 +72,31 @@ export class TranslationService {
       provider: settings.translationProvider,
       apiKey: settings.apiKey,
     };
-
-    // MV3 service workers can go idle and drop the first message.
-    // Retry once after a short delay so the worker has time to wake up.
-    return this.sendWithRetry({ type: 'TRANSLATE', payload }, 2);
+    return this.sendWithRetry({ type: 'TRANSLATE', payload }, 3);
   }
 
-  private sendWithRetry(
-    message: object,
-    attemptsLeft: number
-  ): Promise<string> {
+  private sendWithRetry(message: object, attemptsLeft: number): Promise<string> {
     return new Promise((resolve, reject) => {
       chrome.runtime.sendMessage(
         message,
         (response: TranslationResponse | undefined) => {
-          if (chrome.runtime.lastError) {
-            const msg = chrome.runtime.lastError.message ?? '';
-            if (attemptsLeft > 1 && msg.includes('Receiving end does not exist')) {
-              console.log('[DualSubs] Service worker inactive, retrying…');
+          const err = chrome.runtime.lastError?.message ?? '';
+          if (err) {
+            const isRetriable =
+              err.includes('Receiving end does not exist') ||
+              err.includes('message port closed');
+
+            if (attemptsLeft > 1 && isRetriable) {
+              console.log(`[DualSubs] SW error (${err.slice(0, 40)}…), retry ${attemptsLeft - 1}`);
               setTimeout(
-                () => this.sendWithRetry(message, attemptsLeft - 1).then(resolve).catch(reject),
-                600
+                () =>
+                  this.sendWithRetry(message, attemptsLeft - 1)
+                    .then(resolve)
+                    .catch(reject),
+                700
               );
             } else {
-              reject(new Error(msg));
+              reject(new Error(err));
             }
             return;
           }
