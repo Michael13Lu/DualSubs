@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DualSubs</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="header">
+    <div class="logo">DS</div>
+    <h1>DualSubs</h1>
+  </div>
+
+  <div class="section">
+    <label class="row">
+      <span>Enable extension</span>
+      <input type="checkbox" id="enabled" />
+    </label>
+    <label class="row">
+      <span>Show original subtitles</span>
+      <input type="checkbox" id="showOriginal" />
+    </label>
+  </div>
+
+  <div class="section">
+    <label class="row">
+      <span>Target language</span>
+      <select id="targetLanguage"></select>
+    </label>
+    <label class="row">
+      <span>Overlay position</span>
+      <select id="position">
+        <option value="bottom">Bottom</option>
+        <option value="top">Top</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="section">
+    <label class="row">
+      <span>Font size: <span id="fontSizeVal">18</span>px</span>
+      <input type="range" id="fontSize" min="10" max="40" step="1" />
+    </label>
+    <label class="row">
+      <span>Font color</span>
+      <input type="color" id="fontColor" />
+    </label>
+    <label class="row">
+      <span>Background color</span>
+      <input type="color" id="bgColor" />
+    </label>
+    <label class="row">
+      <span>BG opacity: <span id="bgOpacityVal">0.75</span></span>
+      <input type="range" id="bgOpacity" min="0" max="1" step="0.05" />
+    </label>
+    <label class="row">
+      <span>Line spacing: <span id="spacingVal">8</span>px</span>
+      <input type="range" id="spacing" min="0" max="30" step="1" />
+    </label>
+  </div>
+
+  <div class="section">
+    <label class="row">
+      <span>Translation provider</span>
+      <select id="provider">
+        <option value="mymemory">MyMemory (free)</option>
+        <option value="google">Google Translate</option>
+        <option value="openai">OpenAI GPT</option>
+      </select>
+    </label>
+    <label class="row" id="apiKeyRow">
+      <span>API key</span>
+      <input type="password" id="apiKey" placeholder="Paste your key…" />
+    </label>
+  </div>
+
+  <button id="saveBtn">Save settings</button>
+  <div id="status" class="status"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
