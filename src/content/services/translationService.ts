@@ -35,7 +35,7 @@ export class TranslationService {
   private request(text: string, settings: Settings): Promise<string> {
     const payload = {
       text,
-      sourceLang: 'auto',
+      sourceLang: 'en',
       targetLang: settings.targetLanguage,
       provider: settings.translationProvider,
       apiKey: settings.apiKey,
