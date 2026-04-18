@@ -6,6 +6,7 @@ export class UIOverlayService {
   private container: HTMLDivElement | null = null;
   private originalEl: HTMLDivElement | null = null;
   private translatedEl: HTMLDivElement | null = null;
+  private playerEl: HTMLElement | null = null;
 
   show(originalText: string, translatedText: string, settings: Settings): void {
     this.ensureContainer(settings);
@@ -34,6 +35,12 @@ export class UIOverlayService {
     this.container = null;
     this.originalEl = null;
     this.translatedEl = null;
+    // Undo position:relative we may have set on the player
+    if (this.playerEl && this.playerEl.dataset['dualsubsPos']) {
+      this.playerEl.style.position = this.playerEl.dataset['dualsubsPos'];
+      delete this.playerEl.dataset['dualsubsPos'];
+    }
+    this.playerEl = null;
   }
 
   applySettings(settings: Settings): void {
@@ -42,8 +49,12 @@ export class UIOverlayService {
     this.applyLineStyles(settings);
   }
 
+  // ── Private ───────────────────────────────────────────────────────────────
+
   private ensureContainer(settings: Settings): void {
     if (this.container) return;
+
+    const player = this.findPlayerContainer();
 
     this.container = document.createElement('div');
     this.container.id = OVERLAY_ID;
@@ -56,56 +67,91 @@ export class UIOverlayService {
 
     this.container.appendChild(this.originalEl);
     this.container.appendChild(this.translatedEl);
-    document.body.appendChild(this.container);
+
+    if (player) {
+      // Ensure the player is a positioning context
+      const computed = window.getComputedStyle(player);
+      if (computed.position === 'static') {
+        player.dataset['dualsubsPos'] = computed.position;
+        player.style.position = 'relative';
+      }
+      player.appendChild(this.container);
+      this.playerEl = player;
+    } else {
+      document.body.appendChild(this.container);
+    }
 
     this.applyPositionStyles(settings);
     this.applyLineStyles(settings);
   }
 
+  private findPlayerContainer(): HTMLElement | null {
+    // YouTube
+    const yt =
+      document.querySelector<HTMLElement>('.html5-video-container') ??
+      document.querySelector<HTMLElement>('#movie_player');
+    if (yt) return yt;
+
+    // Udemy / generic — walk up from <video> to find a large enough box
+    const video = document.querySelector('video');
+    if (!video) return null;
+
+    let el = video.parentElement;
+    while (el && el !== document.body) {
+      const r = el.getBoundingClientRect();
+      if (r.width > 300 && r.height > 150) return el;
+      el = el.parentElement;
+    }
+    return null;
+  }
+
   private applyPositionStyles(settings: Settings): void {
     if (!this.container) return;
     const { position, spacing } = settings;
+    const isEmbedded = !!this.playerEl;
 
     Object.assign(this.container.style, {
-      position: 'fixed',
-      left: '50%',
-      transform: 'translateX(-50%)',
-      zIndex: '2147483647',
-      pointerEvents: 'none',
-      textAlign: 'center',
-      maxWidth: '80%',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      gap: `${spacing}px`,
-      top: position === 'top' ? '10%' : 'auto',
-      bottom: position === 'bottom' ? '12%' : 'auto',
+      position:       isEmbedded ? 'absolute' : 'fixed',
+      left:           '50%',
+      transform:      'translateX(-50%)',
+      zIndex:         '2147483647',
+      pointerEvents:  'none',
+      textAlign:      'center',
+      maxWidth:       '90%',
+      width:          'max-content',
+      display:        'flex',
+      flexDirection:  'column',
+      alignItems:     'center',
+      gap:            `${spacing}px`,
+      top:            position === 'top'    ? '6%'  : 'auto',
+      bottom:         position === 'bottom' ? '12%' : 'auto',
     });
   }
 
   private applyLineStyles(settings: Settings): void {
     const { fontSize, fontColor, bgColor, bgOpacity } = settings;
     const bg = hexToRgba(bgColor, bgOpacity);
-    const lineStyle = {
-      fontSize: `${fontSize}px`,
-      color: fontColor,
+    const style: Partial<CSSStyleDeclaration> = {
+      fontSize:   `${fontSize}px`,
+      color:      fontColor,
       background: bg,
-      padding: '3px 10px',
-      borderRadius: '4px',
+      padding:    '4px 12px',
+      borderRadius: '5px',
       lineHeight: '1.45',
-      textShadow: '1px 1px 2px rgba(0,0,0,0.85)',
-      display: 'inline-block',
-      maxWidth: '100%',
+      textShadow: '0 1px 3px rgba(0,0,0,0.9)',
+      display:    'inline-block',
+      maxWidth:   '100%',
+      whiteSpace: 'pre-wrap',
     };
-    if (this.originalEl) Object.assign(this.originalEl.style, lineStyle);
-    if (this.translatedEl) Object.assign(this.translatedEl.style, lineStyle);
+    if (this.originalEl)   Object.assign(this.originalEl.style,   style);
+    if (this.translatedEl) Object.assign(this.translatedEl.style, style);
   }
 }
 
 function hexToRgba(hex: string, opacity: number): string {
-  const clean = hex.replace('#', '');
-  const r = parseInt(clean.slice(0, 2), 16);
-  const g = parseInt(clean.slice(2, 4), 16);
-  const b = parseInt(clean.slice(4, 6), 16);
+  const c = hex.replace('#', '');
+  const r = parseInt(c.slice(0, 2), 16);
+  const g = parseInt(c.slice(2, 4), 16);
+  const b = parseInt(c.slice(4, 6), 16);
   return `rgba(${r},${g},${b},${opacity})`;
 }
