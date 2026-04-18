@@ -20,7 +20,6 @@ export class UIOverlayService {
     this.container.style.display = 'flex';
 
     if (this.originalEl) {
-      // Udemy already shows the original — don't duplicate
       const showOrig = settings.showOriginal && !this.isUdemy;
       this.originalEl.textContent = originalText;
       this.originalEl.style.display = showOrig ? '' : 'none';
@@ -29,7 +28,6 @@ export class UIOverlayService {
       this.translatedEl.textContent = translatedText;
     }
 
-    // Keep overlay under the player on Udemy as the page re-renders
     if (this.isUdemy) this.refreshUdemyPosition();
   }
 
@@ -85,11 +83,30 @@ export class UIOverlayService {
     }
   }
 
-  // ── Udemy: fixed overlay positioned just below the player ─────────────────
+  // ── Udemy: fixed overlay, moves into fullscreen element when needed ────────
 
   private mountUdemy(settings: Settings): void {
+    this.applyUdemyBaseStyles(settings);
     document.body.appendChild(this.container!);
+    this.refreshUdemyPosition();
 
+    const onScrollResize = () => this.refreshUdemyPosition();
+    const onFullscreen = () => this.onFullscreenChange(settings);
+
+    window.addEventListener('scroll', onScrollResize, { passive: true });
+    window.addEventListener('resize', onScrollResize, { passive: true });
+    document.addEventListener('fullscreenchange', onFullscreen);
+
+    this.positionCleanup = () => {
+      window.removeEventListener('scroll', onScrollResize);
+      window.removeEventListener('resize', onScrollResize);
+      document.removeEventListener('fullscreenchange', onFullscreen);
+    };
+
+    this.applyLineStyles(settings);
+  }
+
+  private applyUdemyBaseStyles(settings: Settings): void {
     Object.assign(this.container!.style, {
       position:      'fixed',
       left:          '50%',
@@ -103,34 +120,52 @@ export class UIOverlayService {
       maxWidth:      '80%',
       textAlign:     'center',
     });
+  }
 
-    this.applyLineStyles(settings);
-    this.refreshUdemyPosition();
+  private onFullscreenChange(settings: Settings): void {
+    if (!this.container) return;
 
-    // Track scroll and resize so the overlay stays in sync
-    const onScrollResize = () => this.refreshUdemyPosition();
-    window.addEventListener('scroll',  onScrollResize, { passive: true });
-    window.addEventListener('resize',  onScrollResize, { passive: true });
-    this.positionCleanup = () => {
-      window.removeEventListener('scroll', onScrollResize);
-      window.removeEventListener('resize', onScrollResize);
-    };
+    const fsEl = document.fullscreenElement as HTMLElement | null;
+
+    if (fsEl) {
+      // Entering fullscreen — move overlay inside the fullscreen element
+      // so it appears in the top layer.
+      const pos = window.getComputedStyle(fsEl).position;
+      if (pos === 'static') fsEl.style.position = 'relative';
+
+      fsEl.appendChild(this.container);
+
+      // In fullscreen, position absolutely at the bottom of the screen
+      Object.assign(this.container.style, {
+        position:  'fixed',
+        left:      '50%',
+        transform: 'translateX(-50%)',
+        bottom:    '80px', // above the subtitle line in fullscreen
+        top:       'auto',
+      });
+      this.applyLineStyles(settings);
+    } else {
+      // Exiting fullscreen — move back to body
+      document.body.appendChild(this.container);
+      this.applyUdemyBaseStyles(settings);
+      this.applyLineStyles(settings);
+      this.refreshUdemyPosition();
+    }
   }
 
   /**
-   * Position the overlay right below the Udemy subtitle line.
-   * We measure the video element's on-screen bottom edge, then add:
-   *   ~50px  for the player control bar
-   *   ~32px  for Udemy's own subtitle row
+   * Position the overlay right below the Udemy subtitle line (windowed mode).
+   * Measures video bottom + control bar (≈50px) + subtitle row (≈34px).
    */
   private refreshUdemyPosition(): void {
     if (!this.container) return;
+    if (document.fullscreenElement) return; // managed by onFullscreenChange
 
     const video = document.querySelector('video');
     if (!video) return;
 
     const rect = video.getBoundingClientRect();
-    const top = rect.bottom + 50 + 34; // controls ≈ 50px, subtitle row ≈ 34px
+    const top = rect.bottom + 50 + 34;
 
     this.container.style.top    = `${top}px`;
     this.container.style.bottom = 'auto';
