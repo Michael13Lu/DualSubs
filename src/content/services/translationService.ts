@@ -33,21 +33,38 @@ export class TranslationService {
   }
 
   private request(text: string, settings: Settings): Promise<string> {
+    const payload = {
+      text,
+      sourceLang: 'auto',
+      targetLang: settings.targetLanguage,
+      provider: settings.translationProvider,
+      apiKey: settings.apiKey,
+    };
+
+    // MV3 service workers can go idle and drop the first message.
+    // Retry once after a short delay so the worker has time to wake up.
+    return this.sendWithRetry({ type: 'TRANSLATE', payload }, 2);
+  }
+
+  private sendWithRetry(
+    message: object,
+    attemptsLeft: number
+  ): Promise<string> {
     return new Promise((resolve, reject) => {
       chrome.runtime.sendMessage(
-        {
-          type: 'TRANSLATE',
-          payload: {
-            text,
-            sourceLang: 'auto',
-            targetLang: settings.targetLanguage,
-            provider: settings.translationProvider,
-            apiKey: settings.apiKey,
-          },
-        },
+        message,
         (response: TranslationResponse | undefined) => {
           if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
+            const msg = chrome.runtime.lastError.message ?? '';
+            if (attemptsLeft > 1 && msg.includes('Receiving end does not exist')) {
+              console.log('[DualSubs] Service worker inactive, retrying…');
+              setTimeout(
+                () => this.sendWithRetry(message, attemptsLeft - 1).then(resolve).catch(reject),
+                600
+              );
+            } else {
+              reject(new Error(msg));
+            }
             return;
           }
           if (!response || response.error) {
