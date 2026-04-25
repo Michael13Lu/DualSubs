@@ -42,6 +42,7 @@ function readForm(): Settings {
     enabled: byId<HTMLInputElement>('enabled').checked,
     targetLanguage: byId<HTMLSelectElement>('targetLanguage').value,
     showOriginal: byId<HTMLInputElement>('showOriginal').checked,
+    ttsEnabled: byId<HTMLInputElement>('ttsEnabled').checked,
     position: byId<HTMLSelectElement>('position').value as Settings['position'],
     fontSize: Number(byId<HTMLInputElement>('fontSize').value),
     fontColor: byId<HTMLInputElement>('fontColor').value,
@@ -68,6 +69,7 @@ function fillForm(s: Settings): void {
 
   byId<HTMLInputElement>('enabled').checked = s.enabled;
   byId<HTMLInputElement>('showOriginal').checked = s.showOriginal;
+  byId<HTMLInputElement>('ttsEnabled').checked = s.ttsEnabled;
   byId<HTMLSelectElement>('position').value = s.position;
   byId<HTMLInputElement>('fontSize').value = String(s.fontSize);
   byId<HTMLSpanElement>('fontSizeVal').textContent = String(s.fontSize);

@@ -28,6 +28,7 @@ class DualSubsController {
 
       if (!text) {
         this.uiSvc.clear();
+        window.speechSynthesis.cancel();
         return;
       }
 
@@ -39,15 +40,26 @@ class DualSubsController {
       console.log('[DualSubs] Result:', translated);
       if (translated) {
         this.uiSvc.show(text, translated, this.settings);
+        this.speak(translated);
       }
     }, 150);
 
     this.subtitleSvc.start(handle);
   }
 
+  private speak(text: string): void {
+    if (!this.settings.ttsEnabled) return;
+    window.speechSynthesis.cancel();
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.lang = this.settings.targetLanguage;
+    utt.rate = 1.1;
+    window.speechSynthesis.speak(utt);
+  }
+
   private stopCapture(): void {
     this.subtitleSvc.stop();
     this.uiSvc.destroy();
+    window.speechSynthesis.cancel();
     this.lastText = '';
   }
 

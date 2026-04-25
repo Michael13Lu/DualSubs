@@ -2,6 +2,7 @@ export interface Settings {
   enabled: boolean;
   targetLanguage: string;
   showOriginal: boolean;
+  ttsEnabled: boolean;
   position: 'top' | 'bottom';
   fontSize: number;
   fontColor: string;
@@ -16,6 +17,7 @@ export const DEFAULT_SETTINGS: Settings = {
   enabled: true,
   targetLanguage: 'ru',
   showOriginal: true,
+  ttsEnabled: false,
   position: 'bottom',
   fontSize: 18,
   fontColor: '#ffffff',
