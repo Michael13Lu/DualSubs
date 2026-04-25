@@ -73,7 +73,8 @@ export class UdemyAdapter implements PlatformAdapter {
 
   private bindTrack(track: TextTrack): void {
     if (track.kind !== 'subtitles' && track.kind !== 'captions') return;
-    if (track.mode === 'disabled') track.mode = 'hidden';
+    // We render our own subtitles, so keep native track hidden always.
+    if (track.mode !== 'hidden') track.mode = 'hidden';
     const handler = () => this.onCueChange(track);
     track.addEventListener('cuechange', handler);
     this.cleanups.push(() => track.removeEventListener('cuechange', handler));
@@ -131,6 +132,7 @@ export class UdemyAdapter implements PlatformAdapter {
   private onDOMMutation(): void {
     // 1. Check known stable selectors first
     const knownSelectors = [
+      '[class*="well--text"]',            // Udemy's primary subtitle span (well--text--Xxxxx)
       '[data-purpose="captions-cue-text"]',
       '[data-purpose="transcript-cue"]',
       '[class*="captions-cue-text"]',
