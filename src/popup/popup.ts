@@ -16,7 +16,8 @@ const LANGUAGES = [
   { code: 'hi', name: 'Hindi' },
   { code: 'zh', name: 'Chinese' },
   { code: 'ja', name: 'Japanese' },
-  { code: 'ko', name: 'Korean' },
+ { code: 'ko', name: 'Korean' },
+{ code: 'si', name: 'Sinhala' },
 ];
 
 function byId<T extends HTMLElement>(id: string): T {
